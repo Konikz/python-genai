@@ -589,103 +589,34 @@ def process_schema(
     *,
     order_properties: bool = True,
 ) -> None:
-  """Updates the schema and each sub-schema inplace to be API-compatible.
-
-  - Inlines the $defs.
-
-  Example of a schema before and after (with mldev):
-    Before:
-
-    `schema`
-
-    {
-        'items': {
-            '$ref': '#/$defs/CountryInfo'
-        },
-        'title': 'Placeholder',
-        'type': 'array'
-    }
-
-
-    `defs`
-
-    {
-      'CountryInfo': {
-        'properties': {
-          'continent': {
-              'title': 'Continent',
-              'type': 'string'
-          },
-          'gdp': {
-              'title': 'Gdp',
-              'type': 'integer'}
-          },
-        }
-        'required':['continent', 'gdp'],
-        'title': 'CountryInfo',
-        'type': 'object'
-      }
-    }
-
-    After:
-
-    `schema`
-     {
-        'items': {
-          'properties': {
-            'continent': {
-              'title': 'Continent',
-              'type': 'string'
-            },
-            'gdp': {
-              'title': 'Gdp',
-              'type': 'integer'
-            },
-          }
-          'required':['continent', 'gdp'],
-          'title': 'CountryInfo',
-          'type': 'object'
-        },
-        'type': 'array'
-    }
-  """
-  if not client.vertexai:
-    if schema.get('default') is not None:
-      raise ValueError(
-          'Default value is not supported in the response schema for the Gemini'
-          ' API.'
-      )
+  """Updates the schema and each sub-schema inplace to be API-compatible."""
+  if not client.vertexai and schema.get('default') is not None:
+    raise ValueError(
+        'Default value is not supported in the response schema for the Gemini API.'
+    )
 
   if schema.get('title') == 'PlaceholderLiteralEnum':
     del schema['title']
 
-  # Standardize spelling for relevant schema fields.  For example, if a dict is
-  # provided directly to response_schema, it may use `any_of` instead of `anyOf.
-  # Otherwise, model_json_schema() uses `anyOf`.
-  for from_name, to_name in [
-      ('additional_properties', 'additionalProperties'),
-      ('any_of', 'anyOf'),
-      ('prefix_items', 'prefixItems'),
-      ('property_ordering', 'propertyOrdering'),
-  ]:
+  # Standardize spelling for schema fields
+  field_mappings = {
+      'additional_properties': 'additionalProperties',
+      'any_of': 'anyOf',
+      'prefix_items': 'prefixItems',
+      'property_ordering': 'propertyOrdering',
+  }
+  for from_name, to_name in field_mappings.items():
     if (value := schema.pop(from_name, None)) is not None:
       schema[to_name] = value
 
   if defs is None:
     defs = schema.pop('$defs', {})
-    for _, sub_schema in defs.items():
-      # We can skip the '$ref' check, because JSON schema forbids a '$ref' from
-      # directly referencing another '$ref':
-      # https://json-schema.org/understanding-json-schema/structuring#recursion
-      process_schema(
-          sub_schema, client, defs, order_properties=order_properties
-      )
+    for sub_schema in defs.values():
+      process_schema(sub_schema, client, defs, order_properties=order_properties)
 
   handle_null_fields(schema)
 
-  # After removing null fields, Optional fields with only one possible type
-  # will have a $ref key that needs to be flattened
-  # For example: {'default': None, 'description': 'Name of the person', 'nullable': True, '$ref': '#/$defs/TestPerson'}
+  # Flatten $ref if present
   if (ref := schema.pop('$ref', None)) is not None:
     schema.update(defs[ref.split('defs/')[-1]])
 
@@ -700,15 +631,12 @@ def process_schema(
     schema['anyOf'] = [_recurse(sub_schema) for sub_schema in any_of]
     return
 
-  schema_type = schema.get('type')
+  schema_type = schema.get('type', '').upper()
   if isinstance(schema_type, Enum):
-    schema_type = schema_type.value
-  schema_type = schema_type.upper()
+    schema_type = schema_type.value.upper()
 
-  # model_json_schema() returns a schema with a 'const' field when a Literal with one value is provided as a pydantic field
-  # For example `genre: Literal['action']` becomes: {'const': 'action', 'title': 'Genre', 'type': 'string'}
-  const = schema.get('const')
-  if const is not None:
+  # Handle const to enum conversion
+  if (const := schema.get('const')) is not None:
     if schema_type == 'STRING':
       schema['enum'] = [const]
       del schema['const']
@@ -719,15 +647,10 @@ def process_schema(
     if (properties := schema.get('properties')) is not None:
       for name, sub_schema in list(properties.items()):
         properties[name] = _recurse(sub_schema)
-      if (
-          len(properties.items()) > 1
-          and order_properties
-          and 'propertyOrdering' not in schema
-      ):
-        schema['property_ordering'] = list(properties.keys())
+      if (len(properties) > 1 and order_properties and 
+          'propertyOrdering' not in schema):
+        schema['propertyOrdering'] = list(properties.keys())
     if (additional := schema.get('additionalProperties')) is not None:
-      # It is legal to set 'additionalProperties' to a bool:
-      # https://json-schema.org/understanding-json-schema/reference/object#additionalproperties
       if isinstance(additional, dict):
         schema['additionalProperties'] = _recurse(additional)
   elif schema_type == 'ARRAY':
@@ -735,6 +658,8 @@ def process_schema(
       schema['items'] = _recurse(items)
     if (prefixes := schema.get('prefixItems')) is not None:
       schema['prefixItems'] = [_recurse(prefix) for prefix in prefixes]
+      if 'items' in schema:
+        del schema['items']
 
 
 def _process_enum(
