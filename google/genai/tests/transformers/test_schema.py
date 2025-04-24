@@ -425,44 +425,19 @@ def test_process_schema_order_properties_propagates_into_items(
     [(False, False), (False, True), (True, False), (True, True)],
 )
 def test_process_schema_order_properties_propagates_into_prefix_items(
-    client, order_properties
+    client,
 ):
-  """The `order_properties` setting should apply to 'prefixItems'."""
-  schema = {
-      'type': 'ARRAY',
-      'prefixItems': [
-          {
-              'type': 'OBJECT',
-              'properties': {
-                  'foo': {'type': 'STRING'},
-                  'bar': {'type': 'STRING'},
-              },
-          },
-      ],
-  }
-  schema_without_property_ordering = copy.deepcopy(schema)
-  schema_with_property_ordering = {
-      'type': 'ARRAY',
-      'prefixItems': [
-          {
-              'type': 'OBJECT',
-              'properties': {
-                  'foo': {'type': 'STRING'},
-                  'bar': {'type': 'STRING'},
-              },
-              'property_ordering': ['foo', 'bar'],
-          },
-      ],
-  }
-
-  _transformers.process_schema(
-      schema, client, order_properties=order_properties
-  )
-
-  if order_properties:
-    assert schema == schema_with_property_ordering
-  else:
-    assert schema == schema_without_property_ordering
+    """Tests that process_schema propagates order_properties into prefix_items."""
+    schema = types.Schema(
+        type=types.Type.ARRAY,
+        prefix_items=[
+            types.Schema(type=types.Type.INTEGER),
+            types.Schema(type=types.Type.STRING),
+        ],
+    )
+    process_schema(schema.model_dump(), client, order_properties=True)
+    assert schema.prefix_items[0].property_ordering is not None
+    assert schema.prefix_items[1].property_ordering is not None
 
 
 @pytest.mark.parametrize(

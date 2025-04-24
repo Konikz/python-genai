@@ -31,7 +31,8 @@ class ModelWithTuples(pydantic.BaseModel):
 
 @pytest.fixture
 def client():
-    return google_genai_client_module.Client(api_key='test-api-key')
+    # Create a client with a dummy API key for testing
+    return google_genai_client_module.Client(api_key="dummy-api-key")
 
 
 def test_fixed_length_tuple_schema(client):

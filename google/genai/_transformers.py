@@ -722,6 +722,20 @@ def t_schema(
       or isinstance(origin, VersionedUnionType)
       or typing.get_origin(origin) in _UNION_TYPES
   ):
+    # Handle tuple types
+    if typing.get_origin(origin) is tuple:
+      args = typing.get_args(origin)
+      if len(args) > 0 and args[-1] is ...:  # Variable length tuple
+        schema = types.Schema(
+            type=types.Type.ARRAY,
+            items=t_schema(client, args[0])
+        )
+      else:  # Fixed length tuple
+        schema = types.Schema(
+            type=types.Type.ARRAY,
+            prefix_items=[t_schema(client, arg) for arg in args]
+        )
+      return schema
 
     class Placeholder(pydantic.BaseModel):
       placeholder: origin  # type: ignore[valid-type]
