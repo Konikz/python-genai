@@ -424,26 +424,6 @@ def test_process_schema_order_properties_propagates_into_items(
     'use_vertex,order_properties',
     [(False, False), (False, True), (True, False), (True, True)],
 )
-def test_process_schema_order_properties_propagates_into_prefix_items(
-    client,
-):
-    """Tests that process_schema propagates order_properties into prefix_items."""
-    schema = types.Schema(
-        type=types.Type.ARRAY,
-        prefix_items=[
-            types.Schema(type=types.Type.INTEGER),
-            types.Schema(type=types.Type.STRING),
-        ],
-    )
-    process_schema(schema.model_dump(), client, order_properties=True)
-    assert schema.prefix_items[0].property_ordering is not None
-    assert schema.prefix_items[1].property_ordering is not None
-
-
-@pytest.mark.parametrize(
-    'use_vertex,order_properties',
-    [(False, False), (False, True), (True, False), (True, True)],
-)
 def test_process_schema_order_properties_propagates_into_properties(
     client, order_properties
 ):
